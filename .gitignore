@@ -1,0 +1,29 @@
+# Секрети та налаштування
+.env
+.env.local
+
+# База даних SQLite
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# Логи
+logs/
+*.log
+
+# Кеш Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Тимчасові файли ОС та IDE
+.DS_Store
+.idea/
+.vscode/
+venv/
+.venv/
+env/

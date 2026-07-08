@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>ua.vinnytsia.tenderservice</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Library/Frameworks/Python.framework/Versions/3.11/bin/python3</string>
+        <string>/Users/a1111/.gemini/antigravity/scratch/tender_pipeline/main.py</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/a1111/.gemini/antigravity/scratch/tender_pipeline</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/Users/a1111/.gemini/antigravity/scratch/tender_pipeline/logs/launchd_stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/a1111/.gemini/antigravity/scratch/tender_pipeline/logs/launchd_stderr.log</string>
+</dict>
+</plist>
