@@ -179,6 +179,8 @@ async def init_db():
                 disqualified_amount REAL,
                 diff_amount REAL,
                 status TEXT DEFAULT 'new',
+                region TEXT,
+                cpv TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (prozorro_id, disqualified_edrpou)
@@ -253,6 +255,8 @@ async def init_db():
                     disqualified_amount REAL,
                     diff_amount REAL,
                     status TEXT DEFAULT 'new',
+                    region TEXT,
+                    cpv TEXT,
                     director_name TEXT,
                     email TEXT,
                     phone TEXT,
@@ -308,6 +312,14 @@ async def init_db():
             logger.info("⚙️ Міграція: додано колонку is_fee_paid до tenders")
         except Exception:
             pass
+
+        # Міграція для outreach_leads
+        for col_name in ["region", "cpv"]:
+            try:
+                await db.execute(f"ALTER TABLE outreach_leads ADD COLUMN {col_name} TEXT")
+                logger.info(f"⚙️ Міграція: додано колонку {col_name} до outreach_leads")
+            except Exception:
+                pass
 
 
 async def get_or_create_client(telegram_id: int, **kwargs) -> dict:

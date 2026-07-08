@@ -208,6 +208,7 @@ async def get_active_vinnytsia_tenders(
                             "procuring_entity": tender.get("procuringEntity", {}).get("name"),
                             "deadline": tender.get("tenderPeriod", {}).get("endDate"),
                             "cpv": cpv,
+                            "region": region,
                             "url": f"https://prozorro.gov.ua/tender/{tender.get('id')}",
                         })
                     
