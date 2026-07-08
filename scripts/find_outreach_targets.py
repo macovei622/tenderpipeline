@@ -15,7 +15,7 @@ from loguru import logger
 # Додаємо поточну папку до шляху пошуку модулів
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config import PROZORRO_API_BASE, MIN_AMOUNT, MAX_AMOUNT
+from config import PROZORRO_API_BASE, MIN_AMOUNT, MAX_AMOUNT, TARGET_REGION
 from db.database import init_db, DbConnection
 
 
@@ -67,10 +67,9 @@ async def fetch_outreach_targets():
                             
                             det_data = (await det_resp.json()).get("data", {})
                             
-                            # 1. Регіон: цільові області розширення
+                            # 1. Регіон: фільтр з config.py (якщо задано TARGET_REGION)
                             region = det_data.get("procuringEntity", {}).get("address", {}).get("region", "")
-                            allowed_regions = ["Вінницька", "Кіровоградська", "Дніпропетровська", "Київська", "Київ", "Житомирська", "Волинська"]
-                            if not any(r in region for r in allowed_regions):
+                            if TARGET_REGION and TARGET_REGION not in region:
                                 continue
                                 
                             # 2. Сума: від MIN_AMOUNT до MAX_AMOUNT (наш цільовий сегмент з config.py)

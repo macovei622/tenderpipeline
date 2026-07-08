@@ -14,7 +14,7 @@ import asyncio
 import aiohttp
 from typing import Optional
 from loguru import logger
-from config import PROZORRO_API_BASE, PROZORRO_REQUEST_TIMEOUT
+from config import PROZORRO_API_BASE, PROZORRO_REQUEST_TIMEOUT, TARGET_REGION
 
 
 def extract_tender_id(url_or_id: str) -> Optional[str]:
@@ -182,11 +182,11 @@ async def get_active_vinnytsia_tenders(
                         break
                     
                     for tender in tenders:
-                        # Фільтр за регіоном (перевіряємо procuringEntity.address.region)
+                        # Фільтр за регіоном (якщо TARGET_REGION задано)
                         region = (tender.get("procuringEntity", {})
                                        .get("address", {})
                                        .get("region", ""))
-                        if "Вінницька" not in region:
+                        if TARGET_REGION and TARGET_REGION not in region:
                             continue
                         
                         # Фільтр за сумою

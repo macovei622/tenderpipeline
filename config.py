@@ -19,8 +19,8 @@ OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "")
 PROZORRO_API_BASE = "https://public-api.prozorro.gov.ua/api/2.5"
 PROZORRO_REQUEST_TIMEOUT = 30  # секунди
 
-# ── Фільтри для моніторингу (Вінницька область) ──────────
-TARGET_REGION   = "Вінницька область"
+# ── Фільтри для моніторингу (Порожній рядок = всі області) ──────────
+TARGET_REGION   = ""           # Залишити порожнім для пошуку по всій Україні
 MIN_AMOUNT      = 500_000      # грн (знижено до 500к для SMB-сегменту)
 MAX_AMOUNT      = 20_000_000   # грн
 TARGET_CPV_PREFIX = "45"       # Будівельні роботи (45000000-7 і підкатегорії)
