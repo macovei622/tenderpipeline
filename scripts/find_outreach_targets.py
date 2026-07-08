@@ -15,7 +15,7 @@ from loguru import logger
 # Додаємо поточну папку до шляху пошуку модулів
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config import PROZORRO_API_BASE
+from config import PROZORRO_API_BASE, MIN_AMOUNT, MAX_AMOUNT
 from db.database import init_db, DbConnection
 
 
@@ -73,9 +73,9 @@ async def fetch_outreach_targets():
                             if not any(r in region for r in allowed_regions):
                                 continue
                                 
-                            # 2. Сума: від 500 тис до 20 млн грн (стратегічна межа — наш цільовий сегмент)
+                            # 2. Сума: від MIN_AMOUNT до MAX_AMOUNT (наш цільовий сегмент з config.py)
                             amount = det_data.get("value", {}).get("amount", 0)
-                            if not (500_000 <= amount <= 20_000_000):
+                            if not (MIN_AMOUNT <= amount <= MAX_AMOUNT):
                                 continue
                                 
                             # 3. CPV-код: Будівництво/Ремонт (45xxxxx)

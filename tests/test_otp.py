@@ -1,5 +1,6 @@
 import pytest
 import asyncio
+import random
 from db.database import (
     init_db,
     generate_and_save_otp,
@@ -13,7 +14,8 @@ async def test_otp_flow():
     # 1. Ініціалізуємо БД
     await init_db()
     
-    telegram_id = 999111222
+    # Використовуємо унікальний випадковий id для запобігання перетину з попередніми запусками
+    telegram_id = random.randint(100_000_000, 999_999_999)
     
     # 2. Перевіряємо, що спочатку оферта не прийнята
     accepted_before = await has_accepted_offer(telegram_id)

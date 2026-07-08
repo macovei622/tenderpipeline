@@ -132,7 +132,7 @@ async def fill_document(
     )
 
     logger.info(f"📝 Збирач: генерація довідки «{template_name}»")
-    result = await call_model("claude-3-5-haiku", messages, json_mode=False)
+    result = await call_model("collector", messages, json_mode=False)
 
     if not result:
         return None
