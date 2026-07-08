@@ -23,7 +23,7 @@
       "recall": 1.0,
       "law_ref_ok": true,
       "pass": true,
-      "elapsed_sec": 0.002
+      "elapsed_sec": 0.0
     },
     {
       "id": "trap_own_equipment",

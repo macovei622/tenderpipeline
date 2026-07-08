@@ -6,8 +6,8 @@ ai/models.py — Реєстр моделей і принцип їх призна
 Аналогія: будівля мосту.
 - Сканер = Інженер-аналітик (DeepSeek R1 — найкращий у логічному аналізі)
 - Калькулятор = Кошторисник (Qwen 2.5 72B — математика + structured output)
-- Збирач = Нотаріус (Claude 3.5 Haiku — точне копіювання шаблонів)
-- Перевіряючий = Прокурор (Claude 3.7 Sonnet — знаходить протиріччя)
+- Збирач = Нотаріус (Claude Haiku 4.5 — точне копіювання шаблонів)
+- Перевіряючий = Прокурор (Claude Sonnet 4.5 — знаходить протиріччя)
 - Роутер = Диспетчер (вибирає модель залежно від задачі і бюджету)
 
 Fallback-ланцюг: якщо основна модель недоступна → пробуємо резервну.
@@ -53,12 +53,12 @@ MODELS: dict[str, ModelConfig] = {
         context_window=128_000,
         cost_per_1m_input=0.55,
         cost_per_1m_output=2.19,
-        fallback="claude-3-7-sonnet",
+        fallback="claude-sonnet-4-5",
     ),
 
-    # Claude 3.7 / 4.5 Sonnet — гібрид: логіка + якісний текст
+    # Claude Sonnet 4.5 (внутрішній ключ: claude-sonnet-4-5)
     # Найкращий для: фінальний критичний аудит, роль Перевіряючого
-    "claude-3-7-sonnet": ModelConfig(
+    "claude-sonnet-4-5": ModelConfig(
         id="anthropic/claude-sonnet-4-5",
         name="Claude 3.7/4.5 Sonnet",
         role="Гібридний: глибоке розуміння + якісний текст",
@@ -83,7 +83,7 @@ MODELS: dict[str, ModelConfig] = {
         context_window=131_072,
         cost_per_1m_input=0.35,
         cost_per_1m_output=0.40,
-        fallback="claude-3-5-haiku",
+        fallback="claude-haiku-4-5",
     ),
 
     # Mistral Large — надійний, відмінна підтримка structured output
@@ -101,11 +101,11 @@ MODELS: dict[str, ModelConfig] = {
 
     # ── РІВЕНЬ 3: ГЕНЕРАЦІЯ ДОКУМЕНТІВ (для Збирача) ─────────────────
     #
-    # Claude 3.5 Haiku — швидкий, точно слідує шаблонам, дешевий
+    # Claude Haiku 4.5 (внутрішній ключ: claude-haiku-4-5)
     # Найкращий для: заповнення довідок за суворими шаблонами
-    "claude-3-5-haiku": ModelConfig(
+    "claude-haiku-4-5": ModelConfig(
         id="anthropic/claude-haiku-4.5",
-        name="Claude 3.5 Haiku",
+        name="Claude Haiku 4.5",
         role="Генерація документів за шаблонами, точне форматування",
         temperature=0.0,  # Детермінований!
         max_tokens=4096,
@@ -168,7 +168,7 @@ MODELS: dict[str, ModelConfig] = {
 AGENT_MODELS = {
     # Сканер: знаходить дискримінаційні вимоги
     # → DeepSeek R1 (логічне мислення, юридичний аналіз)
-    # → Fallback: Claude 3.7 Sonnet
+    # → Fallback: Claude Sonnet 4.5
     "scanner": "deepseek-r1",
 
     # Калькулятор: розраховує собівартість і маржу
@@ -177,14 +177,14 @@ AGENT_MODELS = {
     "calculator": "qwen-2.5-72b",
 
     # Збирач: заповнює довідки за шаблонами
-    # → Claude 3.5 Haiku (точне слідування шаблону)
+    # → Claude Haiku 4.5 (точне слідування шаблону)
     # → Fallback: Mistral Large
-    "collector": "claude-3-5-haiku",
+    "collector": "claude-haiku-4-5",
 
     # Перевіряючий: критичний аудит всього пакету
-    # → Claude 3.7 Sonnet (найкращий у знаходженні протиріч)
+    # → Claude Sonnet 4.5 (найкращий у знаходженні протиріч)
     # → Fallback: DeepSeek R1
-    "reviewer": "claude-3-7-sonnet",
+    "reviewer": "claude-sonnet-4-5",
 
     # Великі документи (300+ сторінок):
     # → Gemini 2.5 Pro (1M токенів)

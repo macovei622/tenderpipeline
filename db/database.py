@@ -184,6 +184,23 @@ async def init_db():
                 PRIMARY KEY (prozorro_id, disqualified_edrpou)
             );
             """)
+            await db.execute("""
+            CREATE TABLE IF NOT EXISTS otp_codes (
+                id SERIAL PRIMARY KEY,
+                telegram_id BIGINT NOT NULL,
+                code TEXT NOT NULL,
+                expires_at TIMESTAMP NOT NULL,
+                used_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            """)
+            await db.execute("""
+            CREATE TABLE IF NOT EXISTS offer_acceptances (
+                telegram_id BIGINT PRIMARY KEY,
+                accepted_at TIMESTAMP NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            """)
         else:
             # Схема для SQLite
             async with db.sqlite_conn.cursor() as cursor:
@@ -243,6 +260,23 @@ async def init_db():
                     updated_at TEXT DEFAULT (datetime('now')),
                     PRIMARY KEY (prozorro_id, disqualified_edrpou)
                 );
+                """)
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS otp_codes (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        telegram_id BIGINT NOT NULL,
+                        code TEXT NOT NULL,
+                        expires_at TEXT NOT NULL,
+                        used_at TEXT,
+                        created_at TEXT DEFAULT (datetime('now'))
+                    )
+                """)
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS offer_acceptances (
+                        telegram_id BIGINT PRIMARY KEY,
+                        accepted_at TEXT NOT NULL,
+                        created_at TEXT DEFAULT (datetime('now'))
+                    )
                 """)
         logger.info("✅ База даних ініціалізована")
         
@@ -365,3 +399,80 @@ async def mark_tender_as_seen(prozorro_id: str):
     """Позначає тендер як надісланий."""
     async with DbConnection() as db:
         await db.execute("INSERT OR IGNORE INTO seen_tenders (prozorro_id) VALUES (?)", (prozorro_id,))
+
+
+# ─── OTP / Акцепт публічної оферти ────────────────────────────────────────────
+
+async def generate_and_save_otp(telegram_id: int) -> str:
+    """
+    Генерує 6-значний OTP-код, зберігає в БД (термін дії 15 хвилин),
+    анулює всі попередні активні коди для цього telegram_id.
+    Повертає рядок з кодом.
+    Підстава: ст. 12 ЗУ «Про електронну комерцію» — акцепт оферти
+    через одноразовий код прирівнюється до письмової форми договору.
+    """
+    import secrets
+    import datetime
+    code = str(secrets.randbelow(900_000) + 100_000)  # 6 цифр, ніколи не менше 100000
+    expires_at = (datetime.datetime.utcnow() + datetime.timedelta(minutes=15)).isoformat()
+
+    async with DbConnection() as db:
+        # Анулюємо старі невикористані коди цього клієнта
+        await db.execute(
+            "UPDATE otp_codes SET used_at = datetime('now') WHERE telegram_id = ? AND used_at IS NULL",
+            (telegram_id,)
+        )
+        await db.execute(
+            "INSERT INTO otp_codes (telegram_id, code, expires_at) VALUES (?, ?, ?)",
+            (telegram_id, code, expires_at)
+        )
+    return code
+
+
+async def verify_otp(telegram_id: int, code: str) -> bool:
+    """
+    Перевіряє OTP-код: він має бути невикористаним і не простроченим.
+    При успіху позначає код як використаний (used_at = now).
+    Повертає True при успіху, False при будь-якій помилці.
+    """
+    import datetime
+    now = datetime.datetime.utcnow().isoformat()
+    async with DbConnection() as db:
+        row = await db.fetchone(
+            """SELECT id FROM otp_codes
+               WHERE telegram_id = ? AND code = ?
+                 AND used_at IS NULL AND expires_at > ?
+               ORDER BY created_at DESC LIMIT 1""",
+            (telegram_id, code, now)
+        )
+        if not row:
+            return False
+        await db.execute(
+            "UPDATE otp_codes SET used_at = datetime('now') WHERE id = ?",
+            (row["id"],)
+        )
+        return True
+
+
+async def has_accepted_offer(telegram_id: int) -> bool:
+    """Перевіряє, чи клієнт вже акцептував публічну оферту."""
+    async with DbConnection() as db:
+        row = await db.fetchone(
+            "SELECT 1 FROM offer_acceptances WHERE telegram_id = ?",
+            (telegram_id,)
+        )
+        return row is not None
+
+
+async def record_offer_acceptance(telegram_id: int) -> None:
+    """
+    Записує факт акцепту оферти клієнтом.
+    Якщо клієнт вже акцептував — оновлює дату (повторний акцепт при зміні умов).
+    """
+    async with DbConnection() as db:
+        await db.execute(
+            """INSERT INTO offer_acceptances (telegram_id, accepted_at)
+               VALUES (?, datetime('now'))
+               ON CONFLICT(telegram_id) DO UPDATE SET accepted_at = datetime('now')""",
+            (telegram_id,)
+        )

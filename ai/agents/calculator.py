@@ -303,7 +303,7 @@ async def calculate_margin(
 
 def format_calculator_report(result: dict) -> str:
     """Форматує результат Калькулятора для Telegram."""
-    risk = result.get("risk_level", "?")
+    risk = result.get("margin_risk", "?")  # Calculator writes to margin_risk, not risk_level
     icons = {"LOW": "🟢", "WARNING": "🟡", "CRITICAL": "🔴"}
 
     margin = result.get("margin", 0)

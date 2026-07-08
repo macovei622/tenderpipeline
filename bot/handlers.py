@@ -33,11 +33,16 @@ from prozorro.client import (
 from ai.pdf_parser import extract_text_from_pdf, split_into_sections
 from ai.orchestrator import Blackboard, TenderWorkflow
 from db.database import (
-    get_or_create_client, create_tender, update_tender, 
-    get_client_tenders, log_action, update_client_profile, 
-    get_client_by_telegram_id
+    get_or_create_client, create_tender, update_tender,
+    get_client_tenders, log_action, update_client_profile,
+    get_client_by_telegram_id,
+    generate_and_save_otp, verify_otp, has_accepted_offer, record_offer_acceptance,
 )
-from config import ADMIN_TELEGRAM_ID
+from config import (
+    ADMIN_TELEGRAM_ID,
+    SUCCESS_FEE_RATE, SUCCESS_FEE_MIN_UAH,
+    FLAT_EXPRESS_ANALYSIS, FLAT_FULL_PACKAGE, FLAT_AMKU_MIN, FLAT_AMKU_MAX,
+)
 
 router = Router()
 
@@ -49,13 +54,35 @@ DISCLAIMER = (
     "Перед подачею заявки зверніться до кваліфікованого юриста._"
 )
 
+# ── Текст публічної оферти (скорочений, повний на siteurl) ──────────
+OFFER_TEXT = (
+    "📜 *Публічна оферта на надання послуг AI-аудиту тендерів*\n"
+    "────────────────────────────\n"
+    "Оферент: ФОП Macovei (далі — Постачальник)\n"
+    "Оферт звернена до: будь-якої фізичної або юридичної особи (далі — Клієнт)\n\n"
+    "*Предмет договору:* AI-аналіз тендерної документації та автогенерація довідок.\n\n"
+    "*Тарифи:*\n"
+)
+# Окремо формуємо рядки з числами (щоб уникнути .replace у контексті implicit concatenation)
+_sf = f"• Success Fee: {SUCCESS_FEE_RATE*100:.0f}% від маржі, мін. {SUCCESS_FEE_MIN_UAH:,} грн — оплата після підписання договору.\n".replace(',', '\u202f')
+_fr = f"• Flat Rate: від {FLAT_EXPRESS_ANALYSIS:,} до {FLAT_AMKU_MAX:,} грн залежно від типу послуги.\n".replace(',', '\u202f')
+OFFER_TEXT += (
+    _sf + _fr +
+    "\n"
+    "*Порядок оплати:* рахунок на IBAN Постачальника, строк оплати — 14 днів.\n\n"
+    "ℹ️ Акцептуючи оферту одноразовим кодом, Клієнт підтверджує ознайомлення з умовами\n"
+    "та погоджується з ними (ст. 12 ЗУ «Про електронну комерцію»)."
+)
+
+
+
 
 # ── FSM States ───────────────────────────────────────────────────────────────
 
 class RegistrationStates(StatesGroup):
     waiting_company_name = State()
     waiting_contact_name = State()
-    
+
     # Нові стани для заповнення профілю (/profile)
     waiting_profile_edrpou = State()
     waiting_profile_director_name = State()
@@ -65,6 +92,11 @@ class RegistrationStates(StatesGroup):
     waiting_profile_contracts = State()
 
 
+class OtpStates(StatesGroup):
+    """FSM-стан очікування введення OTP-коду для акцепту оферти."""
+    waiting_otp = State()
+
+
 # ── Хелпери ──────────────────────────────────────────────────────────────────
 
 def status_emoji(status: str) -> str:
@@ -72,6 +104,65 @@ def status_emoji(status: str) -> str:
         "new": "🆕", "analyzing": "🔄", "ready": "✅",
         "submitted": "📤", "won": "🏆", "lost": "❌",
     }.get(status, "❓")
+
+
+async def _send_offer_otp(message: Message, state: FSMContext) -> None:
+    """
+    Надсилає клієнту текст публічної оферти разом з OTP-кодом.
+    Встановлює FSM-стан OtpStates.waiting_otp.
+    Викликається автоматично перед першим виставленням рахунку.
+    """
+    otp = await generate_and_save_otp(message.from_user.id)
+    await state.set_state(OtpStates.waiting_otp)
+    await message.answer(
+        OFFER_TEXT +
+        f"\n\n🔐 *Ваш код підтвердження:* `{otp}`\n"
+        f"_Дійсний 15 хвилин. Введіть код у чат, щоб акцептувати оферту._",
+        parse_mode="Markdown"
+    )
+
+
+@router.message(Command("accept_offer"))
+async def cmd_accept_offer(message: Message, state: FSMContext):
+    """
+    /accept_offer — явний запит клієнта на ознайомлення та акцепт оферти.
+    Корисний для повторного ознайомлення з умовами або при зміні тарифу.
+    """
+    await _send_offer_otp(message, state)
+
+
+@router.message(OtpStates.waiting_otp)
+async def process_otp_input(message: Message, state: FSMContext):
+    """
+    Обробник введення OTP-коду.
+    Перевіряє код, записує акцепт оферти і очищає FSM.
+    """
+    code = (message.text or "").strip()
+    if not code.isdigit() or len(code) != 6:
+        await message.answer(
+            "❌ Очікується 6-значний цифровий код. Спробуйте ще раз або запросіть новий: /accept\_offer",
+            parse_mode="Markdown"
+        )
+        return
+
+    ok = await verify_otp(message.from_user.id, code)
+    if not ok:
+        await message.answer(
+            "❌ Код невірний або прострочений (термін дії — 15 хвилин).\n"
+            "Запросіть новий код: /accept\_offer",
+            parse_mode="Markdown"
+        )
+        return
+
+    await record_offer_acceptance(message.from_user.id)
+    await state.clear()
+    await message.answer(
+        "✅ *Оферту акцептовано!*\n\n"
+        "Ваша згода зафіксована з часовою міткою (ст. 12 ЗУ «Про електронну комерцію»).\n"
+        "Тепер ви можете продовжити роботу з вашим тендером.",
+        parse_mode="Markdown"
+    )
+
 
 
 def _format_scan_report(bb: Blackboard, tender_title: str = "", amount: float = 0.0) -> str:
@@ -124,9 +215,10 @@ def _format_scan_report(bb: Blackboard, tender_title: str = "", amount: float = 
             lines.append("")
 
         # Комерційні ризики договору (commercial risks)
-        # Баг #1 (partial): contract_risk факти не проходять через _self_check_citations
-        # (той перевіряє тільки тип "trap"). Тому не показуємо [НЕПІДТВЕРДЖЕНО] для них —
-        # наявність raw_quote вже є достатнім підтвердженням для комерційних ризиків.
+        # Верифікація через _self_check_citations налагоджена: orchestrator.py
+        # перевіряє обидва типи фактів (discriminatory_requirement + contract_risk).
+        # У звіті [НЕПІДТВЕРДЖЕНО] для contract_risk навмисно не виводимо —
+        # raw_quote вже є достатнім аргументом для клієнта, який читає договір.
         if contract_risks:
             lines.append("💼 *Комерційні ризики договору (врахувати при розрахунку ціни):*")
             for idx, fact in enumerate(contract_risks[:5], 1):
@@ -198,12 +290,11 @@ def _format_scan_report(bb: Blackboard, tender_title: str = "", amount: float = 
 
             # ── Блок «Ваша вигода» — Success fee консультанта ───────────────
             # Модель: 15% від розрахункової маржі клієнта, мін. 5 000 грн
-            SUCCESS_FEE_RATE = 0.15
-            SUCCESS_FEE_MIN  = 5_000
             if margin_amount > 0:
                 raw_fee = margin_amount * SUCCESS_FEE_RATE
-                success_fee = max(raw_fee, SUCCESS_FEE_MIN)
+                success_fee = max(raw_fee, SUCCESS_FEE_MIN_UAH)
                 fee_str = f"{success_fee:,.0f}".replace(",", " ")
+
                 margin_after_fee = margin_amount - success_fee
                 margin_after_str = f"{margin_after_fee:,.0f}".replace(",", " ")
                 lines += [
@@ -340,17 +431,25 @@ async def cmd_tariff(message: Message):
     scheme = row.get("billing_scheme", "success_fee") if row else "success_fee"
     scheme_title = "🏆 Success Fee (Комісія від виграшу)" if scheme == "success_fee" else "💳 Flat Rate (Фіксована передплата)"
     
+    sf_rate_pct = int(SUCCESS_FEE_RATE * 100)
+    sf_min_str = f"{SUCCESS_FEE_MIN_UAH:,}".replace(',', ' ')
+    flat_express_str = f"{FLAT_EXPRESS_ANALYSIS:,}".replace(',', ' ')
+    flat_full_str = f"{FLAT_FULL_PACKAGE:,}".replace(',', ' ')
+    flat_amku_min_str = f"{FLAT_AMKU_MIN:,}".replace(',', ' ')
+    flat_amku_max_str = f"{FLAT_AMKU_MAX:,}".replace(',', ' ')
+
     await message.answer(
         f"💳 *Ваш поточний тарифний план:* {scheme_title}\n\n"
         f"👉 *Ви можете змінити модель оплати:*\n\n"
         f"1. *Success Fee (Комісія за результат):*\n"
         f"   • Безкоштовний аналіз та автозаповнення довідок.\n"
-        f"   • Оплата відсотку від суми контракту *тільки після виграшу та підписання договору* (5% до 4 млн, 4% від 4 до 10 млн, 2.5-3% від 10 до 20 млн).\n\n"
+        f"   • Оплата *{sf_rate_pct}% від вашої маржі тільки після виграшу та підписання договору*.\n"
+        f"   • Мінімальна сума — *{sf_min_str} грн*.\n\n"
         f"2. *Flat Rate (Фіксована передплата):*\n"
         f"   • Оплата фіксованої суми перед початком робіт.\n"
-        f"   • *10 000 грн* за детальний аналіз лоту та кошторису.\n"
-        f"   • *15 000 грн* за автогенерацію повного пакету довідок.\n"
-        f"   • *20 000 грн* за підготовку та юридичний супровід скарги в АМКУ.\n\n"
+        f"   • *{flat_express_str} грн* — Експрес-Аналіз (перевірка ТД без кошторису).\n"
+        f"   • *{flat_full_str} грн* — Подача під ключ (автогенерація довідок + КП).\n"
+        f"   • *{flat_amku_min_str}–{flat_amku_max_str} грн* — Підготовка та супровід скарги в АМКУ.\n\n"
         f"Оберіть бажану схему оплати на кнопках нижче:",
         reply_markup=get_tariff_keyboard(),
         parse_mode="Markdown"
@@ -1335,13 +1434,21 @@ async def cmd_won(message: Message):
             return
             
         amount = row.get("amount", 0)
-        
+
+        # ── Перевірка акцепту публічної оферти (ст. 12 ЗУ «Про електронну комерцію») ──
+        # Якщо клієнт ще не акцептував — надсилаємо оферту з OTP, рахунок не виставляємо.
+        if not await has_accepted_offer(message.from_user.id):
+            await message.answer(
+                "⚠️ *Для виставлення рахунку потрібно акцептувати публічну оферту.*\n\n"
+                "Ми надсилаємо вам умови договору та одноразовий код підтвердження.\n"
+                "Після введення коду рахунок буде виставлено автоматично.",
+                parse_mode="Markdown"
+            )
+            await _send_offer_otp(message, state)
+            return
+
         # ── Success Fee = 15% від розрахункової маржі клієнта, мін. 5 000 грн ──
-        # Модель: прив'язана до РЕАЛЬНОЇ вигоди клієнта (маржі), а не до абстрактної
-        # суми контракту. Це математично справедливо і не «з'їдає» велику частку прибутку
-        # на великих лотах, як було б при фіксованому % від суми.
-        SUCCESS_FEE_RATE = 0.15  # 15% від маржі
-        SUCCESS_FEE_MIN  = 5_000  # мін. 5 000 грн
+        # Використовуємо константи з config.py (єдине джерело правди про ціни).
 
         # Отримуємо маржу з результату калькулятора (збережено в БД)
         calc_data = {}
@@ -1354,11 +1461,11 @@ async def cmd_won(message: Message):
         
         if client_margin > 0:
             raw_fee = client_margin * SUCCESS_FEE_RATE
-            success_fee = max(raw_fee, SUCCESS_FEE_MIN)
-            fee_basis = f"15% від маржі {client_margin:,.0f} грн".replace(",", " ")
+            success_fee = max(raw_fee, SUCCESS_FEE_MIN_UAH)
+            fee_basis = f"{SUCCESS_FEE_RATE*100:.0f}% від маржі {client_margin:,.0f} грн".replace(",", " ")
         else:
             # Якщо маржа невідома — беремо мінімальний поріг
-            success_fee = SUCCESS_FEE_MIN
+            success_fee = SUCCESS_FEE_MIN_UAH
             fee_basis = "мінімальний поріг (маржа невідома)"
             
         # Оновлюємо статус в БД

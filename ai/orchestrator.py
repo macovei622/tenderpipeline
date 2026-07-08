@@ -370,7 +370,12 @@ class TenderWorkflow:
         # Нормалізуємо весь текст ТД для надійного пошуку (видаляємо пробіли та пунктуацію)
         normalized_all = "".join(c for c in all_text if c.isalnum())
         unverified = 0
-        for fact in self.bb.get_facts_by_type("discriminatory_requirement"):
+        # Перевіряємо обидва типи фактів: юридичні заперечення І комерційні ризики
+        facts_to_check = (
+            self.bb.get_facts_by_type("discriminatory_requirement") +
+            self.bb.get_facts_by_type("contract_risk")
+        )
+        for fact in facts_to_check:
             if not fact.raw_quote:
                 unverified += 1
                 continue
