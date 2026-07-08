@@ -70,11 +70,9 @@ async def check_new_tenders(bot: Bot):
     for tender in new_tenders[:5]:  # Максимум 5 за раз
         amount_str = f"{tender['amount']:,.0f}".replace(",", " ")
         deadline_short = tender["deadline"][:10] if tender.get("deadline") else "?"
-        region_name = tender.get("region") or ""
-        header = f"Новий тендер ({region_name})!" if region_name else "Новий тендер!"
         
         message_text = (
-            f"🆕 *{header}*\n\n"
+            f"🆕 *Новий тендер по Вінниці!*\n\n"
             f"📋 {tender['title'][:100]}\n"
             f"🏢 {tender['procuring_entity']}\n"
             f"💰 {amount_str} грн\n"
@@ -94,70 +92,38 @@ async def check_new_tenders(bot: Bot):
             except Exception as e:
                 logger.warning(f"Не вдалося надіслати тендер {tender['id']} клієнту {client_id}: {e}")
                 
-        # ── Провідний проактивний аутріч-матчинг ──
-        matched_leads = []
-        try:
-            from db.database import DbConnection
-            async with DbConnection() as db:
-                rows = await db.fetchall(
-                    """SELECT l.* FROM outreach_leads l
-                       WHERE l.disqualified_edrpou NOT IN (SELECT DISTINCT edrpou FROM clients WHERE edrpou IS NOT NULL)"""
+        # ── Зіставлення з профілями раніше дискваліфікованих лідів (Проактивний тригер) ──
+        from db.database import get_matching_leads
+        region = tender.get("region", "")
+        cpv = tender.get("cpv", "")
+        
+        matching_leads = await get_matching_leads(region, cpv)
+        if matching_leads and ADMIN_TELEGRAM_ID:
+            for lead in matching_leads:
+                lead_name = lead.get("director_name") or "колеги"
+                lead_message = (
+                    f"🚨 *ПРОАКТИВНИЙ ЛІД-ТРИГЕР!*\n\n"
+                    f"Опубліковано новий тендер, який відповідає профілю ліда:\n"
+                    f"🏢 *{lead['disqualified_name']}* (ЄДРПОУ `{lead['disqualified_edrpou']}`)\n"
+                    f"📍 Регіон: {region or 'Невідомо'} | CPV: {cpv or 'Невідомо'}\n\n"
+                    f"📋 *Новий лот:* {tender['title'][:100]}...\n"
+                    f"💰 Сума: {amount_str} грн\n"
+                    f"🔗 [Відкрити тендер]({tender['url']})\n\n"
+                    f"👤 *Директор:* {lead.get('director_name') or 'Невідомо'}\n"
+                    f"📞 Тел: `{lead.get('phone') or 'Немає'}`\n"
+                    f"✉️ Email: `{lead.get('email') or 'Немає'}`\n\n"
+                    f"💬 *Шаблон повідомлення для директора (скопіюйте та відправте):*\n"
+                    f"> _«Доброго дня, {lead_name}! Щойно опубліковано новий тендер щодо {tender['title'][:50]}... на суму {amount_str} грн у вашому регіоні. Ми автоматично перевірили його за допомогою нашого AI-сканера. Бажаєте безкоштовно отримати звіт про приховані пастки замовника, щоб цього разу пройти кваліфікацію?»_"
                 )
-                for r in rows:
-                    lead_region = r.get("region") or ""
-                    lead_cpv = r.get("cpv") or ""
-                    tender_region = tender.get("region") or ""
-                    tender_cpv = tender.get("cpv") or ""
-                    
-                    region_match = lead_region and tender_region and (lead_region[:6].lower() in tender_region.lower() or tender_region[:6].lower() in lead_region.lower())
-                    cpv_match = lead_cpv and tender_cpv and lead_cpv[:3] == tender_cpv[:3]
-                    
-                    if region_match and cpv_match:
-                        matched_leads.append(r)
-        except Exception as e:
-            logger.error(f"Не вдалося виконати пошук аутріч-цілей для нового тендера: {e}")
-
-        # Якщо знайдено збіги з лідами — відправляємо адміну тригер для аутрічу
-        for lead in matched_leads:
-            director_name = lead.get("director_name") or "колеги"
-            company_name = lead.get("disqualified_name") or "компанія"
-            edrpou = lead.get("disqualified_edrpou") or ""
-            phone = lead.get("phone") or "немає"
-            email = lead.get("email") or "немає"
-            
-            # Визначаємо ім'я директора
-            greeting = director_name.split()[1] if len(director_name.split()) >= 2 else director_name
-            # Створюємо копіпаст-шаблон для адміна
-            outreach_pitch = (
-                f"«Шановний {greeting}! Щойно опубліковано новий тендер: {tender['title'][:60]}... "
-                f"на суму {amount_str} грн. Ми вже прогнали його через наш AI-сканер і готові надати вам "
-                f"безкоштовний звіт про приховані вимоги замовника, щоб уникнути помилок минулого разу. "
-                f"Надіслати вам звіт у Telegram чи на {email if email != 'немає' else 'пошту'}?»"
-            )
-            
-            admin_alert = (
-                f"🔔 *Проактивний Аутріч-Тригер!*\n\n"
-                f"Знайдено відповідний тендер для нашого ліда:\n"
-                f"🏢 *{company_name}* (ЄДРПОУ `{edrpou}`)\n"
-                f"👤 Директор: {director_name}\n"
-                f"📞 Контакти: {phone} | {email}\n\n"
-                f"📋 *Новий тендер:* {tender['title'][:100]}\n"
-                f"💰 Сума: {amount_str} грн\n"
-                f"🔗 [Відкрити в Prozorro]({tender['url']})\n\n"
-                f"💬 *Скопіюйте та відправте клієнту:*\n"
-                f"`{outreach_pitch}`"
-            )
-            
-            try:
-                if ADMIN_TELEGRAM_ID:
+                try:
                     await bot.send_message(
                         ADMIN_TELEGRAM_ID,
-                        admin_alert,
+                        lead_message,
                         parse_mode="Markdown"
                     )
-                    await asyncio.sleep(0.5)
-            except Exception as e:
-                logger.error(f"Не вдалося надіслати аутріч-тригер адміну: {e}")
+                    await asyncio.sleep(0.2)
+                except Exception as e:
+                    logger.error(f"Не вдалося надіслати проактивне сповіщення адміну: {e}")
 
         await mark_tender_as_seen(tender["id"])
         await asyncio.sleep(1)
