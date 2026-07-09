@@ -27,3 +27,10 @@ __pycache__/
 venv/
 .venv/
 env/
+
+# Тимчасові та діагностичні файли розробки
+scratch/debug_*.py
+*results.json
+find_and_dump_tenders.py
+/Users/a1111/.gemini/antigravity/scratch/debug_prozorro_detail.py
+

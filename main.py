@@ -21,6 +21,7 @@ from config import (
 )
 from db.database import init_db
 from bot.handlers import router
+from bot.handlers_analytics import router as analytics_router
 from monitor import start_monitor
 
 
@@ -68,6 +69,7 @@ async def main():
     )
     dp = Dispatcher()
     dp.include_router(router)
+    dp.include_router(analytics_router)
     
     # Реєстрація команд в меню Telegram
     from aiogram.types import BotCommand
@@ -77,7 +79,12 @@ async def main():
             BotCommand(command="help", description="Отримати довідку"),
             BotCommand(command="profile", description="Заповнити профіль компанії"),
             BotCommand(command="status", description="Переглянути мої тендери"),
-            BotCommand(command="admin", description="Панель адміністратора (тільки для адміна)")
+            BotCommand(command="spending", description="Аналіз затримок платежів замовника"),
+            BotCommand(command="court", description="Перевірка судових справ замовника"),
+            BotCommand(command="cpm", description="Календарний графік робіт (CPM)"),
+            BotCommand(command="logistics", description="Розрахунок логістики та маржі"),
+            BotCommand(command="auction", description="Симулятор аукціону (Monte Carlo)"),
+            BotCommand(command="admin", description="Панель адміністратора")
         ])
         logger.info("📅 Команди меню зареєстровані в Telegram")
     except Exception as e:

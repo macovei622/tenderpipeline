@@ -104,6 +104,14 @@ class Blackboard:
         self.ocr_coverage:      Optional[float] = None  # % розпізнаного тексту
         self.partial_coverage_pages: list[int] = []     # сторінки без OCR
 
+        # ── Розширена аналітика (analytics/ пакет) ────────────────────────
+        # Всі поля Optional — модулі можуть бути відсутні або відмовити
+        self.spending_result:   Optional[Any] = None    # SpendingResult
+        self.court_result:      Optional[Any] = None    # CourtResult
+        self.cpm_result:        Optional[Any] = None    # CPMResult
+        self.logistics_result:  Optional[Any] = None    # LogisticsResult
+        self.auction_result:    Optional[Any] = None    # AuctionResult
+
     # ── Запис фактів ──────────────────────────────────────────────────────────
 
     def add_fact(self, fact: Fact) -> None:

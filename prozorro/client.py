@@ -36,19 +36,32 @@ def extract_tender_id(url_or_id: str) -> Optional[str]:
 
 async def resolve_tender_uuid(tender_id: str) -> Optional[str]:
     """
-    Якщо tender_id має вигляд UA-..., робить запит на сторінку тендера
-    на prozorro.gov.ua та витягує внутрішній 32-значний UUID для API.
+    Якщо tender_id має вигляд UA-..., робить запит до JSON API деталей
+    на prozorro.gov.ua та повертає внутрішній 32-значний UUID.
     """
     if len(tender_id) == 32 and tender_id.isalnum():
         return tender_id
 
-    url = f"https://prozorro.gov.ua/tender/{tender_id}"
+    # Використовуємо офіційний веб-API деталей тендера (повертає чистий JSON з UUID у полі id)
+    url = f"https://prozorro.gov.ua/api/tenders/{tender_id}/details"
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(url, timeout=15) as resp:
                 if resp.status == 200:
+                    data = await resp.json()
+                    uuid = data.get("id")
+                    if uuid and len(uuid) == 32:
+                        return uuid
+    except Exception as e:
+        logger.warning(f"Не вдалося вирішити UUID через details API для {tender_id}: {e}")
+
+    # Fallback на парсинг HTML-сторінки, якщо API деталей недоступний або повернув помилку
+    fallback_url = f"https://prozorro.gov.ua/tender/{tender_id}"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(fallback_url, timeout=15) as resp:
+                if resp.status == 200:
                     html = await resp.text()
-                    # Шукаємо 32-символьний хеш після /tenders/ або в json-ld
                     match = re.search(r'/tenders/([a-f0-9]{32})', html)
                     if match:
                         return match.group(1)
@@ -56,7 +69,7 @@ async def resolve_tender_uuid(tender_id: str) -> Optional[str]:
                     if match:
                         return match.group(1)
     except Exception as e:
-        logger.warning(f"Не вдалося вирішити UUID для {tender_id}: {e}")
+        logger.warning(f"Не вдалося вирішити UUID через HTML-парсер для {tender_id}: {e}")
     return None
 
 
